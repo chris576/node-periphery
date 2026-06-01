@@ -1,0 +1,130 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: read
+  id-token: write  # required for npm provenance
+
+jobs:
+  # ── 1a. Native prebuild for linux-x64 ────────────────────────────────────
+  prebuild-x64:
+    name: Prebuild (linux-x64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Create prebuilt binary
+        run: npm run prebuild
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prebuilds-linux-x64
+          path: prebuilds/
+          if-no-files-found: error
+
+  # ── 1b. Native prebuild for linux-arm64 (GitHub-hosted arm64 runner) ─────
+  prebuild-arm64:
+    name: Prebuild (linux-arm64)
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Create prebuilt binary
+        run: npm run prebuild
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prebuilds-linux-arm64
+          path: prebuilds/
+          if-no-files-found: error
+
+  # ── 2. E2E tests inside a QEMU arm64 container ───────────────────────────
+  e2e-tests:
+    name: E2E Tests (QEMU arm64)
+    runs-on: ubuntu-latest
+    needs: prebuild-arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      # Install JS deps only — skip native compilation (prebuild used instead)
+      - run: npm ci --ignore-scripts
+
+      - name: Download arm64 prebuild
+        uses: actions/download-artifact@v4
+        with:
+          name: prebuilds-linux-arm64
+          path: prebuilds/
+
+      - name: Enable QEMU arm64 emulation
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Run E2E tests in QEMU arm64
+        run: |
+          docker run --rm \
+            --platform linux/arm64 \
+            -v "$PWD:/workspace" \
+            -w /workspace \
+            node:24 \
+            npm run test:e2e
+
+  # ── 3. Publish to npmjs.com (only after all jobs succeed) ─────────────────
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    needs: [prebuild-x64, prebuild-arm64, e2e-tests]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          cache: 'npm'
+
+      - run: npm ci --ignore-scripts
+
+      - name: Validate tag matches package.json version
+        run: |
+          TAG="${{ github.ref_name }}"
+          PKG_VERSION="v$(node -p "require('./package.json').version")"
+          if [ "$TAG" != "$PKG_VERSION" ]; then
+            echo "::error::Tag $TAG does not match package.json version $PKG_VERSION"
+            exit 1
+          fi
+
+      - name: Download all prebuilt binaries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: prebuilds-*
+          path: prebuilds/
+          merge-multiple: true
+
+      - name: Publish package
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
