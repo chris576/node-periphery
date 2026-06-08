@@ -1,5 +1,5 @@
 {
-  "name": "node-periphery",
+  "name": "@msl5/node-periphery",
   "version": "0.1.3",
   "description": "Native Node.js addon written in C++",
   "main": "index.js",
@@ -9,6 +9,9 @@
       "require": "./index.js",
       "types": "./index.d.ts"
     }
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
   },
   "files": [
     "index.js",

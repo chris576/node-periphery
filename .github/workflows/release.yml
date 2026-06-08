@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: read
-  id-token: write  # required for npm provenance
 
 jobs:
   # ── 1a. Native prebuild for linux-x64 ────────────────────────────────────
@@ -56,9 +55,9 @@ jobs:
           path: prebuilds/
           if-no-files-found: error
 
-  # ── 2. Publish to npmjs.com ─────────────────────────────────────────────
+  # ── 2. Publish to GitHub Packages ───────────────────────────────────────
   publish:
-    name: Publish to npm
+    name: Publish to GitHub Packages
     runs-on: ubuntu-latest
     needs: [prebuild-x64, prebuild-arm64]
     steps:
@@ -67,7 +66,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-          registry-url: 'https://registry.npmjs.org'
+          registry-url: 'https://npm.pkg.github.com'
           cache: 'npm'
 
       - run: npm ci --ignore-scripts
@@ -89,6 +88,6 @@ jobs:
           merge-multiple: true
 
       - name: Publish package
-        run: npm publish --provenance --access public
+        run: npm publish --access public
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
