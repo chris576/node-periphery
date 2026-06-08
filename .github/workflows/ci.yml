@@ -49,7 +49,7 @@ jobs:
   # ── E2E tests — self-hosted arm64, real hardware ───────────────────────────
   e2e-arm64:
     name: E2E Tests (linux/arm64)
-    runs-on: [self-hosted, Linux, ARM64, e2e-test]
+    runs-on: [self-hosted, Linux, ARM64, e2e]
     needs: prebuild-arm64
     steps:
       - uses: actions/checkout@v4
